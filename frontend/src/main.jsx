@@ -1,59 +1,66 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import { createBrowserRouter, RouterProvider } from 'react-router-dom'
-import './index.css'
+import { ReactKeycloakProvider } from '@react-keycloak/web';
+import Keycloak from 'keycloak-js';
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 
-// Theme
-import { ThemeProvider } from './context/ThemeContext'
+import { ThemeProvider } from './context/ThemeContext';
 
-// Layouts
-import DashboardLayout from './layouts/DashboardLayout'
+import DashboardLayout from './layouts/DashboardLayout';
+import ConnectionRoute from './routes/ConnectionRoute';
+import DashboardRoute from './routes/DashboardRoute';
+import EditConnectionRoute from './routes/EditConnectionRoute';
+import NewConnectionRoute from './routes/NewConnectionRoute';
+import NotFoundRoute from './routes/NotFoundRoute';
+import SettingsRoute from './routes/SettingsRoute';
 
-// Routes
-import DashboardRoute from './routes/DashboardRoute'
-import NewConnectionRoute from './routes/NewConnectionRoute'
-import EditConnectionRoute from './routes/EditConnectionRoute'
-import ConnectionRoute from './routes/ConnectionRoute'
-import SettingsRoute from './routes/SettingsRoute'
-import NotFoundRoute from './routes/NotFoundRoute'
+import './index.css';
+
+// Create Keycloak instance only once
+const keycloak = new Keycloak({
+  url: 'http://localhost:8081',
+  realm: 'kubebrowsers',
+  clientId: 'kube-client',
+});
 
 const router = createBrowserRouter([
   {
     path: '/',
     element: <DashboardLayout />,
     children: [
-      {
-        index: true,
-        element: <DashboardRoute />
-      },
-      {
-        path: 'connections/new',
-        element: <NewConnectionRoute />
-      },
-      {
-        path: 'connections/:id',
-        element: <ConnectionRoute />
-      },
-      {
-        path: 'connections/:id/edit',
-        element: <EditConnectionRoute />
-      },
-      {
-        path: 'settings',
-        element: <SettingsRoute />
-      }
-    ]
+      { index: true, element: <DashboardRoute /> },
+      { path: 'connections/new', element: <NewConnectionRoute /> },
+      { path: 'connections/:id', element: <ConnectionRoute /> },
+      { path: 'connections/:id/edit', element: <EditConnectionRoute /> },
+      { path: 'settings', element: <SettingsRoute /> },
+    ],
   },
-  {
-    path: '*',
-    element: <NotFoundRoute />
-  }
-])
+  { path: '*', element: <NotFoundRoute /> },
+]);
 
-createRoot(document.getElementById('root')).render(
-  <StrictMode>
+const root = ReactDOM.createRoot(document.getElementById('root'));
+
+// To avoid double initialization in React.StrictMode development mode,
+// you can temporarily disable StrictMode or add a simple check to prevent double init
+// Here, we'll just remove StrictMode for development to prevent the error.
+root.render(
+  <ReactKeycloakProvider
+    authClient={keycloak}
+    initOptions={{ onLoad: 'login-required', checkLoginIframe: false }}
+    onEvent={(event, error) => {
+      console.log('onKeycloakEvent', event, error);
+    }}
+    onTokens={(tokens) => {
+      if (tokens.token) {
+        sessionStorage.setItem('KEYCLOAK_TOKEN', tokens.token);
+      } else {
+        sessionStorage.removeItem('KEYCLOAK_TOKEN');
+      }
+    }}
+    LoadingComponent={<div>Loading authentication...</div>}
+  >
     <ThemeProvider>
       <RouterProvider router={router} />
     </ThemeProvider>
-  </StrictMode>,
-)
+  </ReactKeycloakProvider>
+);

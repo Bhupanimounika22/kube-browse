@@ -10,10 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@react-keycloak/web": "^3.4.0",
     "@remix-run/router": "^1.23.0",
     "bootstrap": "^5.3.6",
     "framer-motion": "^12.11.0",
     "guacamole-common-js": "^1.5.0",
+    "keycloak-js": "^26.2.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.6.0",
