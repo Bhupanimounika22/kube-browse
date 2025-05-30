@@ -1,11 +1,14 @@
 package guac
 
 import (
+	"context"
 	"fmt"
 	logger "github.com/sirupsen/logrus"
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/coreos/go-oidc"
 )
 
 const (
@@ -20,6 +23,48 @@ const (
 type Server struct {
 	tunnels *TunnelMap
 	connect func(*http.Request) (Tunnel, error)
+}
+
+var (
+	verifier *oidc.IDTokenVerifier
+)
+
+func init() {
+	ctx := context.Background()
+	provider, err := oidc.NewProvider(ctx, "http://localhost:9090/realms/vite-realm")
+	if err != nil {
+		panic(err)
+	}
+	verifier = provider.Verifier(&oidc.Config{ClientID: "kube-client"})
+}
+
+func AuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+
+		ctx := r.Context()
+		idToken, err := verifier.Verify(ctx, token)
+		if err != nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		// Optionally extract claims here
+		var claims map[string]interface{}
+		if err := idToken.Claims(&claims); err != nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		// If you want, set claims or user info in context here for downstream handlers
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 // NewServer constructor

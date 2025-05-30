@@ -6,12 +6,12 @@ function App() {
   const [transitioning, setTransitioning] = useState(false);
   const [formData, setFormData] = useState({
     scheme: 'rdp',
-    hostname: '0.0.0.0',
+    hostname: 'localhost',
     port: '',
     user: '',
     pass: '',
     ignoreCert: true,
-    security: '',
+    security: 'any',
     forceHttp: false,
     width: window.innerWidth,
     height: window.innerHeight
@@ -24,12 +24,12 @@ function App() {
         const query = JSON.parse(window.localStorage.getItem('query'));
         setFormData({
           scheme: query.scheme || 'rdp',
-          hostname: query.hostname || '0.0.0.0',
+          hostname: query.hostname || 'localhost',
           port: query.port || '',
           user: query.username || '',
           pass: query.password || '',
           ignoreCert: query['ignore-cert'] !== false,
-          security: query.security || '',
+          security: query.security || 'any',
           forceHttp: query.forceHttp || false,
           width: window.innerWidth,
           height: window.innerHeight

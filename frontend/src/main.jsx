@@ -18,8 +18,8 @@ import './index.css';
 
 // Create Keycloak instance only once
 const keycloak = new Keycloak({
-  url: 'http://localhost:8081',
-  realm: 'kubebrowsers',
+  url: 'http://localhost:9090',
+  realm: 'vite-realm',
   clientId: 'kube-client',
 });
 
@@ -38,11 +38,32 @@ const router = createBrowserRouter([
   { path: '*', element: <NotFoundRoute /> },
 ]);
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  const root = ReactDOM.createRoot(rootElement);
+  root.render(
+    <ReactKeycloakProvider
+      authClient={keycloak}
+      initOptions={{ onLoad: 'login-required', checkLoginIframe: false }}
+      onEvent={(event, error) => {
+        console.log('onKeycloakEvent', event, error);
+      }}
+      onTokens={(tokens) => {
+        if (tokens.token) {
+          sessionStorage.setItem('KEYCLOAK_TOKEN', tokens.token);
+        } else {
+          sessionStorage.removeItem('KEYCLOAK_TOKEN');
+        }
+      }}
+      LoadingComponent={<div>Loading authentication...</div>}
+    >
+      <ThemeProvider>
+        <RouterProvider router={router} />
+      </ThemeProvider>
+    </ReactKeycloakProvider>
+  );
+}
 
-// To avoid double initialization in React.StrictMode development mode,
-// you can temporarily disable StrictMode or add a simple check to prevent double init
-// Here, we'll just remove StrictMode for development to prevent the error.
 root.render(
   <ReactKeycloakProvider
     authClient={keycloak}
