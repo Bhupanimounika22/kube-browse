@@ -1,0 +1,65 @@
+{
+    http_port 80
+    # Optional: enable debug logging for Caddy if needed
+    # debug
+}
+
+:80 {
+    root * /srv
+    file_server
+
+    # CADDY_GUAC_CLIENT_URL will be provided by docker-compose environment
+    # Use 'handle' instead of 'handle_path' to avoid stripping the path prefix.
+    
+    handle /sessions/* {
+    reverse_proxy {$CADDY_GUAC_CLIENT_URL} {
+        transport http {
+            tls
+            tls_insecure_skip_verify
+        }
+        header_up Host {http.reverse_proxy.upstream.hostport}
+        header_up Connection {header.Connection}
+        header_up Upgrade {header.Upgrade}
+    }
+
+    }
+    handle /test/* {
+        reverse_proxy {$CADDY_GUAC_CLIENT_URL} {
+            transport http {
+                tls
+                tls_insecure_skip_verify
+            }
+            header_up Host {http.reverse_proxy.upstream.hostport}
+            header_up Connection {header.Connection}
+            header_up Upgrade {header.Upgrade}
+        }
+    }
+    handle /tunnel* {
+        reverse_proxy {$CADDY_GUAC_CLIENT_URL} { 
+            transport http {
+                tls
+                tls_insecure_skip_verify
+            }
+            header_up Host {http.reverse_proxy.upstream.hostport}
+            header_up Connection {header.Connection}
+            header_up Upgrade {header.Upgrade}
+        }
+    }
+
+    handle /websocket-tunnel* {
+        reverse_proxy {$CADDY_GUAC_CLIENT_URL} {
+            transport http {
+                tls
+                tls_insecure_skip_verify
+            }
+            header_up Host {http.reverse_proxy.upstream.hostport}
+            header_up Connection {header.Connection}
+            header_up Upgrade {header.Upgrade}
+        }
+    }
+
+    log {
+        output stdout
+        format console
+    }
+} 

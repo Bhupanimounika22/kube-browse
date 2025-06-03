@@ -41,8 +41,8 @@ We are committed to fostering a welcoming community. Please read and adhere to o
 1. **Fork and clone the repository**
 
    ```bash
-   git clone https://github.com/YOUR_USERNAME/guac.git
-   cd guac
+   git clone https://github.com/browsersec/KubeBrowse.git
+   cd KubeBrowse
    ```
 
 2. **Set up the development environment**
@@ -134,6 +134,8 @@ If you encounter errors like `compile: version "go1.24.0" does not match go tool
 - `/certs/` - Certificate files for TLS
 - `/.githooks/` - Git hooks for development
 
+
+
 ## Development Workflow
 
 ### Branching Strategy
@@ -175,13 +177,13 @@ Fixes #123
 
 ### Pre-commit Hooks
 
-This project uses Git hooks to ensure code quality. The pre-commit hook:
+This project uses [Lefthook](https://github.com/evilmartians/lefthook) for managing Git hooks to ensure code quality. The pre-commit hook checks:
 
-- Formats Go code with `gofmt`
-- Runs static analysis with `go vet`
-- Executes linting with `golangci-lint` when available
-- Runs tests
-- Checks for potential secrets
+- Code formatting
+- Static analysis
+- Linting
+- Tests
+- Potential secrets
 
 Install the hooks with:
 ```bash
@@ -190,12 +192,14 @@ make hooks
 
 You can manually run the pre-commit checks:
 ```bash
-# Check only staged files (default pre-commit behavior)
+# Check only staged files
 make lint
 
 # Check all files in the repository
 make lint-all
 ```
+
+If Lefthook is not found, you'll be prompted to install it. Lefthook hooks are automatically installed when you run `make setup`.
 
 ## Pull Requests
 
@@ -248,3 +252,4 @@ make lint-all
 6. Update documentation with release notes
 
 Thank you for contributing to GUAC!
+*

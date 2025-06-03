@@ -1,289 +1,211 @@
-package guac
+package main
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
-	logger "github.com/sirupsen/logrus"
-	"io"
 	"net/http"
 	"strings"
+	"time"
 
-	"github.com/coreos/go-oidc"
+	"github.com/authzed/authzed-go/v1"
+	authzedv1 "github.com/authzed/authzed-go/v1"
+
+	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/gin-gonic/gin"
+	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/sirupsen/logrus"
 )
-
-const (
-	readPrefix        string = "read:"
-	writePrefix       string = "write:"
-	readPrefixLength         = len(readPrefix)
-	writePrefixLength        = len(writePrefix)
-	uuidLength               = 36
-)
-
-// Server uses HTTP requests to talk to guacd (as opposed to WebSockets in ws_server.go)
-type Server struct {
-	tunnels *TunnelMap
-	connect func(*http.Request) (Tunnel, error)
-}
 
 var (
-	verifier *oidc.IDTokenVerifier
+	keycloakIssuer   = "http://localhost:8080/auth/realms/vite-realm" // Your Keycloak Realm URL
+	keycloakClientID = "kube-client"                                  // Your Keycloak client ID
+	spiceDBEndpoint  = "spicedb.local:50051"                          // SpiceDB gRPC endpoint
 )
 
-func init() {
+type Deployment struct {
+	ID          int       `json:"id"`
+	Name        string    `json:"name"`
+	Namespace   string    `json:"namespace"`
+	CreatedBy   string    `json:"created_by"`
+	CreatedAt   time.Time `json:"created_at"`
+	Description string    `json:"description"`
+}
+
+func main() {
 	ctx := context.Background()
-	provider, err := oidc.NewProvider(ctx, "http://localhost:9090/realms/vite-realm")
+
+	// Initialize OIDC verifier for Keycloak
+	provider, err := oidc.NewProvider(ctx, keycloakIssuer)
 	if err != nil {
-		panic(err)
+		logrus.Fatalf("Failed to get OIDC provider: %v", err)
 	}
-	verifier = provider.Verifier(&oidc.Config{ClientID: "kube-client"})
-}
+	verifier := provider.Verifier(&oidc.Config{ClientID: keycloakClientID})
 
-func AuthMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-		token := strings.TrimPrefix(authHeader, "Bearer ")
+	// Connect to PostgreSQL (adjust connection string)
+	db, err := sql.Open("pgx", "postgres://postgres:password@localhost:5432/kube_db?sslmode=disable")
+	if err != nil {
+		logrus.Fatalf("Failed to connect to Postgres: %v", err)
+	}
+	defer db.Close()
 
-		ctx := r.Context()
-		idToken, err := verifier.Verify(ctx, token)
+	// Connect to SpiceDB
+	spiceClient, err := authzed.NewClient(ctx, spiceDBEndpoint, nil)
+	if err != nil {
+		logrus.Fatalf("Failed to connect to SpiceDB: %v", err)
+	}
+
+	// Initialize Gin router
+	r := gin.Default()
+
+	// Auth middleware: validate Keycloak JWT
+	r.Use(func(c *gin.Context) {
+		userID, err := validateKeycloakToken(c.Request, verifier)
 		if err != nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: " + err.Error()})
 			return
 		}
-
-		// Optionally extract claims here
-		var claims map[string]interface{}
-		if err := idToken.Claims(&claims); err != nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		// If you want, set claims or user info in context here for downstream handlers
-
-		next.ServeHTTP(w, r)
+		c.Set("userID", userID)
+		c.Next()
 	})
-}
 
-// NewServer constructor
-func NewServer(connect func(r *http.Request) (Tunnel, error)) *Server {
-	return &Server{
-		tunnels: NewTunnelMap(),
-		connect: connect,
-	}
-}
+	// Deployments routes with RBAC
+	r.POST("/deployments", func(c *gin.Context) {
+		userID := c.GetString("userID")
 
-// Registers the given tunnel such that future read/write requests to that tunnel will be properly directed.
-func (s *Server) registerTunnel(tunnel Tunnel) {
-	s.tunnels.Put(tunnel.GetUUID(), tunnel)
-	logger.Debugf("Registered tunnel %v.", tunnel.GetUUID())
-}
-
-// Deregisters the given tunnel such that future read/write requests to that tunnel will be rejected.
-func (s *Server) deregisterTunnel(tunnel Tunnel) {
-	s.tunnels.Remove(tunnel.GetUUID())
-	logger.Debugf("Deregistered tunnel %v.", tunnel.GetUUID())
-}
-
-// Returns the tunnel with the given UUID.
-func (s *Server) getTunnel(tunnelUUID string) (ret Tunnel, err error) {
-	var ok bool
-	ret, ok = s.tunnels.Get(tunnelUUID)
-
-	if !ok {
-		err = ErrResourceNotFound.NewError("No such tunnel.")
-	}
-	return
-}
-
-func (s *Server) sendError(response http.ResponseWriter, guacStatus Status, message string) {
-	response.Header().Set("Guacamole-Status-Code", fmt.Sprintf("%v", guacStatus.GetGuacamoleStatusCode()))
-	response.Header().Set("Guacamole-Error-Message", message)
-	response.WriteHeader(guacStatus.GetHTTPStatusCode())
-}
-
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	err := s.handleTunnelRequestCore(w, r)
-	if err == nil {
-		return
-	}
-	guacErr := err.(*ErrGuac)
-	switch guacErr.Kind {
-	case ErrClient:
-		logger.Warn("HTTP tunnel request rejected: ", err.Error())
-		s.sendError(w, guacErr.Status, err.Error())
-	default:
-		logger.Error("HTTP tunnel request failed: ", err.Error())
-		logger.Debug("Internal error in HTTP tunnel.", err)
-		s.sendError(w, guacErr.Status, "Internal server error.")
-	}
-}
-
-func (s *Server) handleTunnelRequestCore(response http.ResponseWriter, request *http.Request) (err error) {
-	query := request.URL.RawQuery
-	if len(query) == 0 {
-		return ErrClient.NewError("No query string provided.")
-	}
-
-	// Call the supplied connect callback upon HTTP connect request
-	if query == "connect" {
-		tunnel, e := s.connect(request)
-		if e != nil {
-			err = ErrResourceNotFound.NewError("No tunnel created.", e.Error())
-			return
-		}
-
-		s.registerTunnel(tunnel)
-
-		// Ensure buggy browsers do not cache response
-		response.Header().Set("Cache-Control", "no-cache")
-
-		_, e = response.Write([]byte(tunnel.GetUUID()))
-
-		if e != nil {
-			err = ErrServer.NewError(e.Error())
-			return
-		}
-		return
-	}
-
-	// Connect has already been called so we use the UUID to do read and writes to the existing session
-	if strings.HasPrefix(query, readPrefix) && len(query) >= readPrefixLength+uuidLength {
-		err = s.doRead(response, request, query[readPrefixLength:readPrefixLength+uuidLength])
-	} else if strings.HasPrefix(query, writePrefix) && len(query) >= writePrefixLength+uuidLength {
-		err = s.doWrite(response, request, query[writePrefixLength:writePrefixLength+uuidLength])
-	} else {
-		err = ErrClient.NewError("Invalid tunnel operation: " + query)
-	}
-
-	return
-}
-
-// doRead takes guacd messages and sends them in the response
-func (s *Server) doRead(response http.ResponseWriter, request *http.Request, tunnelUUID string) error {
-	tunnel, err := s.getTunnel(tunnelUUID)
-	if err != nil {
-		return err
-	}
-
-	reader := tunnel.AcquireReader()
-	defer tunnel.ReleaseReader()
-
-	// Note that although we are sending text, Webkit browsers will
-	// buffer 1024 bytes before starting a normal stream if we use
-	// anything but application/octet-stream.
-	response.Header().Set("Content-Type", "application/octet-stream")
-	response.Header().Set("Cache-Control", "no-cache")
-
-	if v, ok := response.(http.Flusher); ok {
-		v.Flush()
-	}
-
-	err = s.writeSome(response, reader, tunnel)
-
-	if err == nil {
-		// success
-		return err
-	}
-
-	switch err.(*ErrGuac).Kind {
-	// Send end-of-stream marker and close tunnel if connection is closed
-	case ErrConnectionClosed:
-		s.deregisterTunnel(tunnel)
-		if closeErr := tunnel.Close(); closeErr != nil {
-			logger.Debug("Error closing tunnel:", closeErr)
-		}
-
-		// End-of-instructions marker
-		_, _ = response.Write([]byte("0.;"))
-		if v, ok := response.(http.Flusher); ok {
-			v.Flush()
-		}
-	default:
-		logger.Debugln("Error writing to output", err)
-		s.deregisterTunnel(tunnel)
-		if closeErr := tunnel.Close(); closeErr != nil {
-			logger.Debug("Error closing tunnel:", closeErr)
-		}
-	}
-
-	return err
-}
-
-// writeSome drains the guacd buffer holding instructions into the response
-func (s *Server) writeSome(response http.ResponseWriter, guacd InstructionReader, tunnel Tunnel) (err error) {
-	var message []byte
-
-	for {
-		message, err = guacd.ReadSome()
+		// Check SpiceDB permission for user on resource
+		allowed, err := checkPermission(ctx, spiceClient, userID, "deploy", "kube_namespace", "default")
 		if err != nil {
-			s.deregisterTunnel(tunnel)
-			if closeErr := tunnel.Close(); closeErr != nil {
-				logger.Debug("Error closing tunnel:", closeErr)
-			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check permissions"})
+			return
+		}
+		if !allowed {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
 
-		if len(message) == 0 {
+		var dep Deployment
+		if err := c.ShouldBindJSON(&dep); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
 			return
 		}
 
-		_, e := response.Write(message)
-		if e != nil {
-			err = ErrOther.NewError(e.Error())
+		dep.CreatedBy = userID
+		dep.CreatedAt = time.Now()
+
+		// Insert into Postgres
+		err = insertDeployment(ctx, db, &dep)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save deployment"})
 			return
 		}
 
-		if !guacd.Available() {
-			if v, ok := response.(http.Flusher); ok {
-				v.Flush()
-			}
+		c.JSON(http.StatusOK, dep)
+	})
+
+	r.GET("/deployments", func(c *gin.Context) {
+		userID := c.GetString("userID")
+
+		// Check SpiceDB permission
+		allowed, err := checkPermission(ctx, spiceClient, userID, "view", "kube_namespace", "default")
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check permissions"})
+			return
+		}
+		if !allowed {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
 		}
 
-		// No more messages another guacd can take over
-		if tunnel.HasQueuedReaderThreads() {
-			break
+		deps, err := getDeployments(ctx, db)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load deployments"})
+			return
 		}
-	}
 
-	// End-of-instructions marker
-	if _, err = response.Write([]byte("0.;")); err != nil {
-		return err
-	}
-	if v, ok := response.(http.Flusher); ok {
-		v.Flush()
-	}
-	return nil
+		c.JSON(http.StatusOK, deps)
+	})
+
+	r.Run(":8081")
 }
 
-// doWrite takes data from the request and sends it to guacd
-func (s *Server) doWrite(response http.ResponseWriter, request *http.Request, tunnelUUID string) error {
-	tunnel, err := s.getTunnel(tunnelUUID)
-	if err != nil {
-		return err
+// Validate Keycloak JWT token from Authorization header
+func validateKeycloakToken(r *http.Request, verifier *oidc.IDTokenVerifier) (string, error) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return "", errors.New("Authorization header missing")
 	}
 
-	// We still need to set the content type to avoid the default of
-	// text/html, as such a content type would cause some browsers to
-	// attempt to parse the result, even though the JavaScript client
-	// does not explicitly request such parsing.
-	response.Header().Set("Content-Type", "application/octet-stream")
-	response.Header().Set("Cache-Control", "no-cache")
-	response.Header().Set("Content-Length", "0")
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || parts[0] != "Bearer" {
+		return "", errors.New("Authorization header format must be Bearer {token}")
+	}
+	rawToken := parts[1]
 
-	writer := tunnel.AcquireWriter()
-	defer tunnel.ReleaseWriter()
-
-	_, err = io.Copy(writer, request.Body)
-
+	ctx := r.Context()
+	idToken, err := verifier.Verify(ctx, rawToken)
 	if err != nil {
-		s.deregisterTunnel(tunnel)
-		if err = tunnel.Close(); err != nil {
-			logger.Debug("Error closing tunnel")
+		return "", fmt.Errorf("invalid token: %w", err)
+	}
+
+	// Extract subject from token claims (sub claim)
+	var claims struct {
+		Sub string `json:"sub"`
+	}
+	if err := idToken.Claims(&claims); err != nil {
+		return "", fmt.Errorf("failed to parse claims: %w", err)
+	}
+
+	return claims.Sub, nil
+}
+
+// Check SpiceDB permission for user
+func checkPermission(ctx context.Context, client *authzed.Client, userID, permission, resourceType, resourceID string) (bool, error) {
+	resp, err := client.CheckPermission(ctx, &authzedv1.CheckPermissionRequest{
+		Resource: &authzedv1.ObjectReference{
+			ObjectType: resourceType,
+			ObjectId:   resourceID,
+		},
+		Permission: permission,
+		Subject: &authzedv1.SubjectReference{
+			Object: &authzedv1.ObjectReference{
+				ObjectType: "user",
+				ObjectId:   userID,
+			},
+		},
+	})
+	if err != nil {
+		return false, err
+	}
+
+	return resp.Permissionship == authzedv1.CheckPermissionResponse_PERMISSIONSHIP_HAS_PERMISSION, nil
+}
+
+// Insert deployment data into Postgres
+func insertDeployment(ctx context.Context, db *sql.DB, dep *Deployment) error {
+	query := `INSERT INTO deployments(name, namespace, created_by, created_at, description)
+		VALUES ($1, $2, $3, $4, $5) RETURNING id`
+	return db.QueryRowContext(ctx, query, dep.Name, dep.Namespace, dep.CreatedBy, dep.CreatedAt, dep.Description).Scan(&dep.ID)
+}
+
+// Get all deployments
+func getDeployments(ctx context.Context, db *sql.DB) ([]Deployment, error) {
+	rows, err := db.QueryContext(ctx, "SELECT id, name, namespace, created_by, created_at, description FROM deployments")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var deployments []Deployment
+	for rows.Next() {
+		var d Deployment
+		if err := rows.Scan(&d.ID, &d.Name, &d.Namespace, &d.CreatedBy, &d.CreatedAt, &d.Description); err != nil {
+			return nil, err
 		}
+		deployments = append(deployments, d)
 	}
 
-	return err
+	return deployments, nil
 }

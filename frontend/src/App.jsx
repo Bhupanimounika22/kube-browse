@@ -1,17 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import GuacClient from './components/GuacClient';
+import OfficeSession from './components/OfficeSession';
 
 function App() {
+  const [activeTab, setActiveTab] = useState('office'); // 'office' or 'manual'
   const [connect, setConnect] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
   const [formData, setFormData] = useState({
     scheme: 'rdp',
-    hostname: 'localhost',
+    hostname: '0.0.0.0',
     port: '',
     user: '',
     pass: '',
     ignoreCert: true,
-    security: 'any',
+    security: '',
     forceHttp: false,
     width: window.innerWidth,
     height: window.innerHeight
@@ -24,12 +26,12 @@ function App() {
         const query = JSON.parse(window.localStorage.getItem('query'));
         setFormData({
           scheme: query.scheme || 'rdp',
-          hostname: query.hostname || 'localhost',
+          hostname: query.hostname || '0.0.0.0',
           port: query.port || '',
           user: query.username || '',
           pass: query.password || '',
           ignoreCert: query['ignore-cert'] !== false,
-          security: query.security || 'any',
+          security: query.security || '',
           forceHttp: query.forceHttp || false,
           width: window.innerWidth,
           height: window.innerHeight
@@ -84,6 +86,8 @@ function App() {
       }
     }
     
+    console.log(queryString.join("&"))
+    
     return queryString.join("&");
   };
 
@@ -112,8 +116,35 @@ function App() {
 
   return (
     <div className="w-full max-w-4xl mx-auto p-4">
+      <div className="flex justify-center mb-6">
+        <div className="inline-flex rounded-lg border border-gray-700 bg-gray-800 p-1">
+          <button
+            className={`px-4 py-2 rounded-md text-sm font-medium ${
+              activeTab === 'office'
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-300 hover:text-white'
+            }`}
+            onClick={() => setActiveTab('office')}
+          >
+            Office Session
+          </button>
+          <button
+            className={`px-4 py-2 rounded-md text-sm font-medium ${
+              activeTab === 'manual'
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-300 hover:text-white'
+            }`}
+            onClick={() => setActiveTab('manual')}
+          >
+            Manual Connection
+          </button>
+        </div>
+      </div>
+
       <div className={`transition-opacity duration-300 ${transitioning ? 'opacity-0' : 'opacity-100'}`}>
-        {!connect ? (
+        {activeTab === 'office' ? (
+          <OfficeSession />
+        ) : !connect ? (
           <div className="bg-gray-800 rounded-lg p-6 shadow-lg">
             <h1 className="text-3xl font-bold mb-4 text-center text-white">React Guacamole client example</h1>
             <p className="mb-6 text-center text-gray-300">Enter connection information to connect</p>

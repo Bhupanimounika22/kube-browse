@@ -18,6 +18,8 @@ else
 	bash ./certs/generate.sh
 endif
 
+
+
 # Install dependencies
 deps:
 	go mod tidy

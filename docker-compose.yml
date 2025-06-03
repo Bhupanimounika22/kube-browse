@@ -1,38 +1,196 @@
-version: '3.8'
+version: "3.9"
 
 services:
-  postgres:
-    image: postgres
-    container_name: keycloak-postgres
-    restart: always
-    networks:
-      - keycloak-network
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "4567:4567"
     environment:
-      POSTGRES_DB: keycloak
-      POSTGRES_USER: keycloak_user
-      POSTGRES_PASSWORD: keycloak_password
+      GUACD_ADDRESS: guacd:4822
+      CERT_PATH: /app/certs/certificate.crt
+      CERT_KEY_PATH: /app/certs/private.key
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgresuser
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: sandbox_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: minioaccesskey
+      MINIO_SECRET_KEY: miniosecretkey
+    depends_on:
+      - guacd
+      - postgres
+      - redis
+      - minio
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:80"
+    depends_on:
+      - backend
+    environment:
+      GUAC_CLIENT_URL: https://backend:4567
+      CADDY_GUAC_CLIENT_URL: ${CADDY_GUAC_CLIENT_URL:-https://backend:4567}
+    restart: unless-stopped
+
+  guacd:
+    image: guacamole/guacd:latest
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgresuser
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: sandbox_db
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.0-alpine
+    platform: linux/amd64
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  minio:
+    image: quay.io/minio/minio
+    platform: linux/amd64
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioaccesskey
+      MINIO_ROOT_PASSWORD: miniosecretkey
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+
+  clamd:
+    image: mkodockx/docker-clamav:alpine
+    platform: linux/amd64
+    restart: unless-stopped
+    networks:
+      - clam-net
+    healthcheck:
+      test: ["CMD", "clamdscan", "--ping", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  redis-clam:
+    image: redis:7.0-alpine
+    platform: linux/amd64
+    restart: unless-stopped
+    networks:
+      - clam-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  api:
+    image: ghcr.io/browsersec/clamav-go-api:latest
+    platform: linux/amd64
+    restart: unless-stopped
+    depends_on:
+      clamd:
+        condition: service_healthy
+      redis-clam:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      CLAMD_IP: clamd
+      APP_FORM_KEY: FILES
+      APP_PORT: 3000
+      APP_MAX_FILE_SIZE: 26214400
+      APP_MAX_FILES_NUMBER: 4
+      CLAMD_PORT: 3310
+      CLAMD_TIMEOUT: 60000
+      REDIS_URL: redis://redis-clam:6379
+      JOB_EXPIRATION: 3600
+    ports:
+      - "3000:3000"
+    networks:
+      - clam-net
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 3000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   keycloak:
     image: quay.io/keycloak/keycloak:latest
-    container_name: keycloak
-    restart: always
     command: start-dev
-    networks:
-      - keycloak-network
     environment:
       KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin_password
+      KEYCLOAK_ADMIN_PASSWORD: admin
       KC_DB: postgres
-      KC_DB_URL_HOST: keycloak-postgres
-      KC_DB_USERNAME: keycloak_user
-      KC_DB_PASSWORD: keycloak_password
+      KC_DB_URL: jdbc:postgresql://keycloak-postgres:5432/keycloak
+      KC_DB_USERNAME: keycloakuser
+      KC_DB_PASSWORD: keycloakpassword
+      KC_HOSTNAME: localhost 
     ports:
-      - "9090:8080"
+      - "8080:8080"
     depends_on:
-      - postgres
+      - keycloak-postgres
+    restart: unless-stopped
+
+  keycloak-postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: keycloakuser
+      POSTGRES_PASSWORD: keycloakpassword
+      POSTGRES_DB: keycloak
+    ports:
+      - "5433:5432"  # Note: Host port 5433 maps to container 5432
+    volumes:
+      - keycloak_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  spicedb:
+    image: authzed/spicedb:v1.30.0
+    command: serve --grpc-preshared-key "supersecret" --datastore-engine postgres --datastore-conn-uri "postgresql://spicedbuser:spicedbpassword@spicedb-postgres:5434/spicedb?sslmode=disable"
+    ports:
+      - "50052:50051"
+    depends_on:
+      - spicedb-postgres
+    restart: unless-stopped
+
+  spicedb-postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: spicedbuser
+      POSTGRES_PASSWORD: spicedbpassword
+      POSTGRES_DB: spicedb
+    ports:
+      - "5434:5432"   
+    volumes:
+      - spicedb_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
 
 networks:
-  keycloak-network:
+  clam-net:
     driver: bridge
+
+volumes:
+  postgres_data: {}
+  minio_data: {}
+  keycloak_postgres_data: {}
+  spicedb_postgres_data: {}

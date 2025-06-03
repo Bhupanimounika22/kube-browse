@@ -2,7 +2,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-const guacClient = process.env.GUAC_CLIENT_URL || 'https://0.0.0.0:4567'
+const guacClient = process.env.GUAC_CLIENT_URL || 'https://152.53.244.80:30006'
 console.log(`Using Guacamole client URL: ${guacClient}`)
 
 export default defineConfig({
@@ -10,6 +10,22 @@ export default defineConfig({
   server: {
     proxy: {
       '/tunnel': {
+        target: guacClient,
+        changeOrigin: true,
+        ws: false,
+        secure: false, // Ignore certificate validation
+        timeout: 60000, // Increase timeout to 60 seconds
+        proxyTimeout: 60000,
+      },
+      '/test': {
+        target: guacClient,
+        changeOrigin: true,
+        ws: false,
+        secure: false, // Ignore certificate validation
+        timeout: 60000, // Increase timeout to 60 seconds
+        proxyTimeout: 60000,
+      },
+      '/sessions': {
         target: guacClient,
         changeOrigin: true,
         ws: false,

@@ -11,26 +11,21 @@ RUN npm install
 # Copy the rest of the application code
 COPY . .
 
-# Build the application (default guacClient URL will be used unless overridden)
-ARG GUAC_CLIENT_URL
+# Build the application with GUAC_CLIENT_URL as an empty string for relative paths
+ARG GUAC_CLIENT_URL=""
 ENV GUAC_CLIENT_URL=${GUAC_CLIENT_URL}
 RUN npm run build
 
 # Production stage
-FROM nginx:alpine
+FROM caddy:alpine
 
-# Copy the built application from the build stage
-COPY --from=build /app/dist /usr/share/nginx/html
+# Copy the Caddyfile
+COPY Caddyfile /etc/caddy/Caddyfile
 
-# Copy a custom nginx configuration if needed
-# COPY ./nginx.conf /etc/nginx/conf.d/default.conf
+# Copy the built application from the build stage to Caddy's default static file directory /srv
+COPY --from=build /app/dist /srv
 
-# Add healthcheck
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:80/ || exit 1
+# Caddy's default port is 80 for HTTP. The Caddyfile also specifies listening on port 80.
+# EXPOSE 80 is already handled by the base caddy image.
 
-# Expose the port
-EXPOSE 80
-
-# Start nginx with daemon off to keep the container running
-CMD ["nginx", "-g", "daemon off;"]
+# The default CMD for the caddy image will run caddy using the Caddyfile.

@@ -49,6 +49,7 @@ export default function ConnectionRoute() {
 
     // Properly format the connection parameters as individual properties
     // instead of passing the entire object
+    console.log(connection)
     return {
       scheme: connection.scheme || 'rdp',
       hostname: connection.hostname || '0.0.0.0',

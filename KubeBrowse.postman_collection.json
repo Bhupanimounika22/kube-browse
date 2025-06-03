@@ -1,0 +1,89 @@
+{
+  "info": {
+    "name": "KubeBrowse API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Create Office Session",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/test/deploy-office",
+          "host": ["{{baseUrl}}"],
+          "path": ["test", "deploy-office"]
+        }
+      }
+    },
+    {
+      "name": "Get WebSocket Connection Info",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/test/connect/:connection_id",
+          "host": ["{{baseUrl}}"],
+          "path": ["test", "connect", ":connection_id"]
+        }
+      }
+    },
+    {
+      "name": "Stop Session and Delete Pod",
+      "request": {
+        "method": "DELETE",
+        "url": {
+          "raw": "{{baseUrl}}/sessions/:connection_id/stop",
+          "host": ["{{baseUrl}}"],
+          "path": ["sessions", ":connection_id", "stop"]
+        }
+      }
+    },
+    {
+      "name": "List Active Sessions",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/sessions/",
+          "host": ["{{baseUrl}}"],
+          "path": ["sessions", ""]
+        }
+      }
+    },
+    {
+      "name": "Create Browser Pod",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/test/browser-pod",
+          "host": ["{{baseUrl}}"],
+          "path": ["test", "browser-pod"]
+        }
+      }
+    },
+    {
+      "name": "Create Office Pod (alternate)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/test/office-pod",
+          "host": ["{{baseUrl}}"],
+          "path": ["test", "office-pod"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4567"
+    }
+  ]
+} 

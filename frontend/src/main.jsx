@@ -1,38 +1,32 @@
+// src/main.jsx
 import { ReactKeycloakProvider } from '@react-keycloak/web';
-import Keycloak from 'keycloak-js';
-import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import './index.css';
+import keycloak from './keycloak';
 
 import { ThemeProvider } from './context/ThemeContext';
-
 import DashboardLayout from './layouts/DashboardLayout';
-import ConnectionRoute from './routes/ConnectionRoute';
-import DashboardRoute from './routes/DashboardRoute';
-import EditConnectionRoute from './routes/EditConnectionRoute';
-import NewConnectionRoute from './routes/NewConnectionRoute';
+
+import BrowserSessionRoute from './routes/BrowserSessionRoute';
 import NotFoundRoute from './routes/NotFoundRoute';
+import OfficeSessionRoute from './routes/OfficeSessionRoute';
 import SettingsRoute from './routes/SettingsRoute';
+import ShareWSRoute from './routes/ShareWSRoute';
 
-import './index.css';
-
-// Create Keycloak instance only once
-const keycloak = new Keycloak({
-  url: 'http://localhost:9090',
-  realm: 'vite-realm',
-  clientId: 'kube-client',
-});
+import DeploymentsRoute from './routes/DeploymentsRoute'; // New route for deployments
 
 const router = createBrowserRouter([
   {
     path: '/',
     element: <DashboardLayout />,
     children: [
-      { index: true, element: <DashboardRoute /> },
-      { path: 'connections/new', element: <NewConnectionRoute /> },
-      { path: 'connections/:id', element: <ConnectionRoute /> },
-      { path: 'connections/:id/edit', element: <EditConnectionRoute /> },
+      { index: true, element: <OfficeSessionRoute /> },
       { path: 'settings', element: <SettingsRoute /> },
+      { path: 'office-session', element: <OfficeSessionRoute /> },
+      { path: 'browser-session', element: <BrowserSessionRoute /> },
+      { path: 'share-ws-url', element: <ShareWSRoute /> },
+      { path: 'deployments', element: <DeploymentsRoute /> }, // New route
     ],
   },
   { path: '*', element: <NotFoundRoute /> },

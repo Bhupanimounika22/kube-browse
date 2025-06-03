@@ -1,0 +1,146 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clamd
+  namespace: browser-sandbox
+  labels:
+    app: clamd
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clamd
+  template:
+    metadata:
+      labels:
+        app: clamd
+    spec:
+      containers:
+        - name: clamd
+          image: clamav/clamav:stable
+          ports:
+            - containerPort: 3310
+          readinessProbe:
+            exec:
+              command:
+                - clamdscan
+                - --ping
+                - "1"
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command:
+                - clamdscan
+                - --ping
+                - "1"
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          resources:
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clamd
+  namespace: browser-sandbox
+  labels:
+    app: clamd
+spec:
+  selector:
+    app: clamd
+  ports:
+    - port: 3310
+      targetPort: 3310
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clamd-api-config
+  namespace: browser-sandbox
+data:
+  NODE_ENV: "production"
+  CLAMD_IP: "clamd.browser-sandbox.svc.cluster.local"
+  APP_FORM_KEY: "FILES"
+  APP_PORT: "3000"
+  APP_MAX_FILE_SIZE: "26214400"
+  APP_MAX_FILES_NUMBER: "4"
+  CLAMD_PORT: "3310"
+  CLAMD_TIMEOUT: "60000"
+  REDIS_URL: "redis://redis.browser-sandbox.svc.cluster.local:6379"
+  JOB_EXPIRATION: "3600"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clamvd-api
+  namespace: browser-sandbox
+  labels:
+    app: clamvd-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: clamvd-api
+  template:
+    metadata:
+      labels:
+        app: clamvd-api
+    spec:
+      containers:
+        - name: clamvd-api
+          image: ghcr.io/browsersec/clamav-go-api:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: clamd-api-config
+          readinessProbe:
+            httpGet:
+              path: /api/v1/version
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/v1/version
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clamd-api
+  namespace: browser-sandbox
+  labels:
+    app: clamvd-api
+spec:
+  selector:
+    app: clamvd-api
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: ClusterIP

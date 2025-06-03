@@ -1,0 +1,30 @@
+### Create Office Session
+POST http://localhost:4567/test/deploy-office
+Content-Type: application/json
+
+###
+
+### Get WebSocket Connection Info
+GET http://localhost:4567/test/connect/{{connection_id}}
+
+###
+
+### Stop Session and Delete Pod
+DELETE http://localhost:4567/sessions/{{connection_id}}/stop
+
+###
+
+### List Active Sessions
+GET http://localhost:4567/sessions/
+
+###
+
+### Create Browser Pod
+POST http://localhost:4567/test/browser-pod
+Content-Type: application/json
+
+###
+
+### Create Office Pod (alternate)
+POST http://localhost:4567/test/office-pod
+Content-Type: application/json 

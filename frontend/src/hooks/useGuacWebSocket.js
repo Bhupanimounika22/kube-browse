@@ -15,6 +15,7 @@ import states from '../lib/states';
 const useGuacWebSocket = (wsUrl, httpUrl, forceHttp = false, queryString = '') => {
   const [connectionState, setConnectionState] = useState(states.IDLE);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isConnectionUnstable, setIsConnectionUnstable] = useState(false);
   const clientRef = useRef(null);
   const tunnelRef = useRef(null);
 
@@ -79,16 +80,20 @@ const useGuacWebSocket = (wsUrl, httpUrl, forceHttp = false, queryString = '') =
       switch (state) {
         case Guacamole.Tunnel.State.CONNECTING:
           setConnectionState(states.CONNECTING);
+          setIsConnectionUnstable(false);
           break;
         case Guacamole.Tunnel.State.OPEN:
           setConnectionState(states.CONNECTED);
+          setIsConnectionUnstable(false);
           break;
         case Guacamole.Tunnel.State.UNSTABLE:
           // Handle unstable connection
           console.warn('WebSocket connection is unstable');
+          setIsConnectionUnstable(true);
           break;
         case Guacamole.Tunnel.State.CLOSED:
           setConnectionState(states.DISCONNECTED);
+          setIsConnectionUnstable(false);
           break;
         default:
           break;
@@ -185,7 +190,8 @@ const useGuacWebSocket = (wsUrl, httpUrl, forceHttp = false, queryString = '') =
     client: clientRef.current,
     connectionState,
     errorMessage,
-    readyState
+    readyState,
+    isConnectionUnstable
   };
 };
 

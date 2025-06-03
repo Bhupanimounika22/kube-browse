@@ -3,24 +3,32 @@ import Guacamole from 'guacamole-common-js';
 const clipboard = {};
 
 clipboard.install = (client) => {
-  clipboard.getLocalClipboard().then(data => clipboard.cache = data);
-
-  window.addEventListener('load', clipboard.update(client), true);
-  window.addEventListener('copy', clipboard.update(client));
-  window.addEventListener('cut', clipboard.update(client));
+  // Don't automatically try to read clipboard on load - wait for user interaction
+  window.addEventListener('copy', () => clipboard.update(client)());
+  window.addEventListener('cut', () => clipboard.update(client)());
   window.addEventListener('focus', e => {
     if (e.target === window) {
-      clipboard.update(client)();
+      // Only try clipboard operations after user interaction
+      if (document.hasFocus()) {
+        clipboard.update(client)();
+      }
     }
   }, true);
 };
 
 clipboard.update = client => {
   return () => {
-    clipboard.getLocalClipboard().then(data => {
-      clipboard.cache = data;
-      clipboard.setRemoteClipboard(client);
-    });
+    clipboard.getLocalClipboard()
+      .then(data => {
+        if (data) {
+          clipboard.cache = data;
+          clipboard.setRemoteClipboard(client);
+        }
+      })
+      .catch(err => {
+        // Silently handle clipboard permission errors
+        console.debug('Clipboard access not permitted:', err);
+      });
   };
 };
 
@@ -47,20 +55,29 @@ clipboard.setRemoteClipboard = (client) => {
 };
 
 clipboard.getLocalClipboard = async () => {
-  if (navigator.clipboard && navigator.clipboard.readText) {
-    const text = await navigator.clipboard.readText();
-    return {
-      type: 'text/plain',
-      data: text
-    };
+  try {
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      const text = await navigator.clipboard.readText();
+      return {
+        type: 'text/plain',
+        data: text
+      };
+    }
+  } catch (error) {
+    // Return null instead of failing if clipboard permission is denied
+    return null;
   }
 };
 
 clipboard.setLocalClipboard = async (data) => {
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    if (data.type === 'text/plain') {
-      await navigator.clipboard.writeText(data.data);
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      if (data.type === 'text/plain') {
+        await navigator.clipboard.writeText(data.data);
+      }
     }
+  } catch (error) {
+    console.debug('Could not write to clipboard:', error);
   }
 };
 
