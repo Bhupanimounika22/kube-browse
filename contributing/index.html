@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <meta name="turbo-cache-control" content="no-cache" data-turbo-track="reload" data-track-token="3.9.0.802230054599">
+    <meta name="turbo-cache-control" content="no-cache" data-turbo-track="reload" data-track-token="3.9.0.802277580712">
 
     <!-- See retype.com -->
     <meta name="generator" content="Retype 3.9.0">
@@ -30,12 +30,12 @@
 
     <script data-cfasync="false">(function(){var cl=document.documentElement.classList,ls=localStorage.getItem("retype_scheme"),hd=cl.contains("dark"),hl=cl.contains("light"),wm=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches;if(ls==="dark"||(!ls&&wm&&!hd&&!hl)){cl.remove("light");cl.add("dark")}else if(ls==="light"||(!ls&&!wm&&!hd&&!hl)){cl.remove("dark");cl.add("light")}})();</script>
 
-    <link href="../resources/css/retype.css?v=3.9.0.802230054599" rel="stylesheet">
+    <link href="../resources/css/retype.css?v=3.9.0.802277580712" rel="stylesheet">
 
-    <script data-cfasync="false" src="../resources/js/config.js?v=3.9.0.802230054599" data-turbo-eval="false" defer></script>
+    <script data-cfasync="false" src="../resources/js/config.js?v=3.9.0.802277580712" data-turbo-eval="false" defer></script>
     <script data-cfasync="false" src="../resources/js/retype.js?v=3.9.0" data-turbo-eval="false" defer></script>
-    <script id="lunr-js" data-cfasync="false" src="../resources/js/lunr.js?v=3.9.0.802230054599" data-turbo-eval="false" defer></script>
-    <script id="prism-js" data-cfasync="false" src="../resources/js/prism.js?v=3.9.0.802230054599" defer></script>
+    <script id="lunr-js" data-cfasync="false" src="../resources/js/lunr.js?v=3.9.0.802277580712" data-turbo-eval="false" defer></script>
+    <script id="prism-js" data-cfasync="false" src="../resources/js/prism.js?v=3.9.0.802277580712" defer></script>
 </head>
 <body>
     <div id="docs-app" class="relative text-base antialiased text-gray-700 bg-white font-body dark:bg-dark-850 dark:text-dark-300">
@@ -246,8 +246,8 @@
 <ol>
 <li><p><strong>Fork and clone the repository</strong></p>
 <div class="codeblock-wrapper"><doc-codeblock>
-<pre class="language-bash"><code v-pre class="language-bash">git clone https://github.com/YOUR_USERNAME/guac.git
-cd guac</code></pre>
+<pre class="language-bash"><code v-pre class="language-bash">git clone https://github.com/browsersec/KubeBrowse.git
+cd KubeBrowse</code></pre>
 </doc-codeblock></div>
 </li>
 <li><p><strong>Set up the development environment</strong></p>
@@ -401,13 +401,13 @@ Fixes #123</code></pre>
         <span>Pre-commit Hooks</span>
     </h3>
 </doc-anchor-target>
-<p>This project uses Git hooks to ensure code quality. The pre-commit hook:</p>
+<p>This project uses <a href="https://github.com/evilmartians/lefthook">Lefthook</a> for managing Git hooks to ensure code quality. The pre-commit hook checks:</p>
 <ul>
-<li>Formats Go code with <code v-pre>gofmt</code></li>
-<li>Runs static analysis with <code v-pre>go vet</code></li>
-<li>Executes linting with <code v-pre>golangci-lint</code> when available</li>
-<li>Runs tests</li>
-<li>Checks for potential secrets</li>
+<li>Code formatting</li>
+<li>Static analysis</li>
+<li>Linting</li>
+<li>Tests</li>
+<li>Potential secrets</li>
 </ul>
 <p>Install the hooks with:</p>
 <div class="codeblock-wrapper"><doc-codeblock>
@@ -415,12 +415,13 @@ Fixes #123</code></pre>
 </doc-codeblock></div>
 <p>You can manually run the pre-commit checks:</p>
 <div class="codeblock-wrapper"><doc-codeblock>
-<pre class="language-bash"><code v-pre class="language-bash"># Check only staged files (default pre-commit behavior)
+<pre class="language-bash"><code v-pre class="language-bash"># Check only staged files
 make lint
 
 # Check all files in the repository
 make lint-all</code></pre>
 </doc-codeblock></div>
+<p>If Lefthook is not found, you&#x27;ll be prompted to install it. Lefthook hooks are automatically installed when you run <code v-pre>make setup</code>.</p>
 <doc-anchor-target id="pull-requests">
     <h2>
         <doc-anchor-trigger class="header-anchor-trigger" to="#pull-requests">#</doc-anchor-trigger>
@@ -509,7 +510,8 @@ make lint-all</code></pre>
 <li>Tag the release with the version number</li>
 <li>Update documentation with release notes</li>
 </ol>
-<p>Thank you for contributing to GUAC!</p>
+<p>Thank you for contributing to GUAC!
+*</p>
 
                                 
                                 <!-- Required only on API pages -->
