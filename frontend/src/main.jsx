@@ -41,6 +41,7 @@ const router = createBrowserRouter([
 const rootElement = document.getElementById('root');
 if (rootElement) {
   const root = ReactDOM.createRoot(rootElement);
+
   root.render(
     <ReactKeycloakProvider
       authClient={keycloak}
@@ -63,25 +64,3 @@ if (rootElement) {
     </ReactKeycloakProvider>
   );
 }
-
-root.render(
-  <ReactKeycloakProvider
-    authClient={keycloak}
-    initOptions={{ onLoad: 'login-required', checkLoginIframe: false }}
-    onEvent={(event, error) => {
-      console.log('onKeycloakEvent', event, error);
-    }}
-    onTokens={(tokens) => {
-      if (tokens.token) {
-        sessionStorage.setItem('KEYCLOAK_TOKEN', tokens.token);
-      } else {
-        sessionStorage.removeItem('KEYCLOAK_TOKEN');
-      }
-    }}
-    LoadingComponent={<div>Loading authentication...</div>}
-  >
-    <ThemeProvider>
-      <RouterProvider router={router} />
-    </ThemeProvider>
-  </ReactKeycloakProvider>
-);
