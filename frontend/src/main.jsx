@@ -1,9 +1,8 @@
-// src/main.jsx
 import { ReactKeycloakProvider } from '@react-keycloak/web';
 import ReactDOM from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import './index.css';
-import keycloak from './keycloak';
+import keycloak from './keycloak'; // Your keycloak config
 
 import { ThemeProvider } from './context/ThemeContext';
 import DashboardLayout from './layouts/DashboardLayout';
@@ -14,7 +13,7 @@ import OfficeSessionRoute from './routes/OfficeSessionRoute';
 import SettingsRoute from './routes/SettingsRoute';
 import ShareWSRoute from './routes/ShareWSRoute';
 
-import DeploymentsRoute from './routes/DeploymentsRoute'; // New route for deployments
+import DeploymentsRoute from './routes/DeploymentsRoute'; // import the DeploymentsRoute
 
 const router = createBrowserRouter([
   {
@@ -26,7 +25,7 @@ const router = createBrowserRouter([
       { path: 'office-session', element: <OfficeSessionRoute /> },
       { path: 'browser-session', element: <BrowserSessionRoute /> },
       { path: 'share-ws-url', element: <ShareWSRoute /> },
-      { path: 'deployments', element: <DeploymentsRoute /> }, // New route
+      { path: 'deployments', element: <DeploymentsRoute /> },  // add the deployments route here
     ],
   },
   { path: '*', element: <NotFoundRoute /> },

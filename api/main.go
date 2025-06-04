@@ -10,17 +10,156 @@ import (
 	"net/http"
 	"net/url"
 	"time"
-
+	"strings"  
+	"log"
+	"os"
+	"path/filepath"
+	 
+	
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/rest"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	redis2 "github.com/browsersec/KubeBrowse/internal/redis"
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/kubernetes"
+	"github.com/coreos/go-oidc/v3/oidc"
 	
 )
+ 
+var (
+	keycloakURL = "http://localhost:8080/realms/vite-react"
+	clientID    = "kube-client"
+	provider    *oidc.Provider
+	verifier    *oidc.IDTokenVerifier
+)
 
+func main() {
+	ctx := context.Background()
 
+	var err error
+	provider, err = oidc.NewProvider(ctx, keycloakURL)
+	if err != nil {
+		log.Fatalf("Failed to get provider: %v", err)
+	}
+
+	verifier = provider.Verifier(&oidc.Config{ClientID: clientID})
+
+	mux := http.NewServeMux()
+	mux.Handle("/deployments", withCORS(http.HandlerFunc(authMiddleware(deploymentsHandler))))
+
+	log.Println("Listening on :8081")
+	if err := http.ListenAndServe(":8081", mux); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// Middleware to verify Bearer token from Authorization header
+func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			http.Error(w, "Authorization header missing", http.StatusUnauthorized)
+			return
+		}
+
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			http.Error(w, "Invalid Authorization header", http.StatusUnauthorized)
+			return
+		}
+
+		idTokenStr := parts[1]
+
+		ctx := r.Context()
+		_, err := verifier.Verify(ctx, idTokenStr)
+		if err != nil {
+			http.Error(w, "Invalid token: "+err.Error(), http.StatusUnauthorized)
+			return
+		}
+
+		next(w, r)
+	}
+}
+
+// Handler to fetch real Kubernetes deployments dynamically
+func deploymentsHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+
+	clientset, err := getK8sClient()
+	if err != nil {
+		http.Error(w, "Failed to create Kubernetes client: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	deployList, err := clientset.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		http.Error(w, "Failed to list deployments: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Prepare a simplified response array
+	type deploymentInfo struct {
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		Namespace string `json:"namespace"`
+		CreatedBy string `json:"created_by,omitempty"`
+	}
+
+	var deployments []deploymentInfo
+	for _, d := range deployList.Items {
+		// Get created_by from annotations or labels if available, else empty
+		createdBy := d.Annotations["created_by"]
+		if createdBy == "" {
+			createdBy = d.Labels["created_by"]
+		}
+		deployments = append(deployments, deploymentInfo{
+			ID:        string(d.UID),
+			Name:      d.Name,
+			Namespace: d.Namespace,
+			CreatedBy: createdBy,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(deployments)
+}
+
+// Get Kubernetes clientset from kubeconfig or in-cluster config
+func getK8sClient() (*kubernetes.Clientset, error) {
+	// Try in-cluster config first (if running inside a pod)
+	config, err := rest.InClusterConfig()
+	if err == nil {
+		return kubernetes.NewForConfig(config)
+	}
+
+	// Fall back to kubeconfig file from home directory
+	kubeconfig := filepath.Join(os.Getenv("HOME"), ".kube", "config")
+	config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+
+	return kubernetes.NewForConfig(config)
+}
+
+// CORS middleware
+func withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
 // Struct for request body
 type DeploySessionRequest struct {
 	Height string `json:"height"`

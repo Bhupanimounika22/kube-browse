@@ -1,4 +1,3 @@
-// src/routes/DeploymentsRoute.jsx
 import React, { useEffect, useState } from "react";
 
 export default function DeploymentsRoute() {
