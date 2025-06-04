@@ -50,8 +50,16 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/deployments", withCORS(http.HandlerFunc(authMiddleware(deploymentsHandler))))
 
+	server := &http.Server{
+		Addr:         ":8081",
+		Handler:      mux,
+		ReadTimeout:  10 * time.Second,  // Set sensible timeouts
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
 	log.Println("Listening on :8081")
-	if err := http.ListenAndServe(":8081", mux); err != nil {
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -84,7 +92,7 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// Handler to fetch real Kubernetes deployments dynamically
+// Handler to fetch Kubernetes deployments dynamically
 func deploymentsHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 
@@ -100,7 +108,6 @@ func deploymentsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Prepare a simplified response array
 	type deploymentInfo struct {
 		ID        string `json:"id"`
 		Name      string `json:"name"`
@@ -110,7 +117,6 @@ func deploymentsHandler(w http.ResponseWriter, r *http.Request) {
 
 	var deployments []deploymentInfo
 	for _, d := range deployList.Items {
-		// Get created_by from annotations or labels if available, else empty
 		createdBy := d.Annotations["created_by"]
 		if createdBy == "" {
 			createdBy = d.Labels["created_by"]
@@ -124,18 +130,19 @@ func deploymentsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(deployments)
+	if err := json.NewEncoder(w).Encode(deployments); err != nil {
+		// Handle JSON encoding error properly
+		http.Error(w, "Failed to encode response: "+err.Error(), http.StatusInternalServerError)
+	}
 }
 
 // Get Kubernetes clientset from kubeconfig or in-cluster config
 func getK8sClient() (*kubernetes.Clientset, error) {
-	// Try in-cluster config first (if running inside a pod)
 	config, err := rest.InClusterConfig()
 	if err == nil {
 		return kubernetes.NewForConfig(config)
 	}
 
-	// Fall back to kubeconfig file from home directory
 	kubeconfig := filepath.Join(os.Getenv("HOME"), ".kube", "config")
 	config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
